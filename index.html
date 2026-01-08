@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 Rodent BMI Monitor 5g | Brainware University</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="logo">
+            <h2>🧪 BMI Lab 5g</h2>
+            <p>Brainware University</p>
+        </div>
+        <a href="#dashboard" class="nav-item active">
+            <span>📊</span> Dashboard
+        </a>
+        <a href="#records" class="nav-item">
+            <span>📋</span> Records
+        </a>
+        <a href="#trends" class="nav-item">
+            <span>📈</span> Trends
+        </a>
+        <a href="#alerts" class="nav-item">
+            <span>🚨</span> Alerts
+        </a>
+        <a href="#about" class="nav-item">
+            <span>ℹ️</span> Guidelines
+        </a>
+    </nav>
+
+    <main>
+        <!-- DASHBOARD -->
+        <section id="dashboard" class="section active">
+            <div class="status-bar">
+                <div class="status-card connected">
+                    <span>Arduino 5g</span>
+                    <span id="arduino-status">🔴 Disconnected</span>
+                </div>
+                <div class="status-card">
+                    <span>Blynk WiFi</span>
+                    <span id="blynk-status">🔴 Disconnected</span>
+                </div>
+            </div>
+
+            <div class="input-panel">
+                <div class="rodent-card">
+                    <h3>🐭 Rodent Details</h3>
+                    <input type="text" id="rodent-id" placeholder="ID: R-001">
+                    <select id="gender">
+                        <option value="">Select Gender</option>
+                        <option value="Male">♂ Male</option>
+                        <option value="Female">♀ Female</option>
+                    </select>
+                    <input type="number" id="age" placeholder="Age (weeks)">
+                </div>
+
+                <div class="input-card">
+                    <h3>📏 Length Input</h3>
+                    <input type="number" id="length" placeholder="Length (cm)" step="0.01">
+                </div>
+
+                <div class="input-card">
+                    <h3>⚙️ Auto Mode</h3>
+                    <input type="number" id="interval" value="30" min="10"> sec
+                    <button onclick="toggleAutoMode()">▶ Start Auto</button>
+                </div>
+            </div>
+
+            <div class="metrics-display">
+                <div class="metric">
+                    <span>Weight</span>
+                    <div id="weight-display">0.00 g</div>
+                </div>
+                <div class="metric">
+                    <span>Length</span>
+                    <div id="length-display">0.00 cm</div>
+                </div>
+                <div class="metric">
+                    <span>Lee Index</span>
+                    <div id="lee-display">0.00</div>
+                </div>
+                <div class="metric condition" id="condition-display">
+                    Normal
+                </div>
+            </div>
+
+            <div class="drug-panel">
+                <h3>💊 AI Drug Administration</h3>
+                <select id="drug-select">
+                    <option value="saline">Saline (0 mg/kg)</option>
+                    <option value="metformin">Metformin (10 mg/kg)</option>
+                    <option value="insulin">Insulin (2 IU/kg)</option>
+                    <option value="streptozotocin">Streptozotocin (50 mg/kg)</option>
+                </select>
+                <div class="dose-display">
+                    AI Calculated Dose: <span id="dose-display">0.00</span> mg/kg
+                </div>
+                <label>
+                    <input type="checkbox" id="administer-drug">
+                    Record Administration
+                </label>
+                <button onclick="saveRecord()" class="btn-primary">💾 Save Record</button>
+            </div>
+        </section>
+
+        <!-- RECORDS -->
+        <section id="records" class="section">
+            <h2>📋 Lab Monitor: Rodent BMI Records</h2>
+            <div class="table-container">
+                <table id="records-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th><th>Date/Time</th><th>Gender</th><th>Age</th>
+                            <th>Weight(g)</th><th>Length(cm)</th><th>Lee Index</th><th>Drug/Dose</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- TRENDS -->
+        <section id="trends" class="section">
+            <h2>📈 Rodent Health Trend Analysis</h2>
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>Lee Index Trend</h3>
+                    <canvas id="lee-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Weight Trend (g)</h3>
+                    <canvas id="weight-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Length Trend (cm)</h3>
+                    <canvas id="length-chart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Drug-Physiology</h3>
+                    <canvas id="drug-chart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- ALERTS -->
+        <section id="alerts" class="section">
+            <h2>🚨 Abnormal BMI Alerts</h2>
+            <div id="alerts-container" class="alerts-grid"></div>
+        </section>
+
+        <!-- ABOUT -->
+        <section id="about" class="section">
+            <h2>📚 Ethical Guidelines</h2>
+            <div class="guidelines-grid">
+                <a href="https://ccsea.gov.in/Auth/index.aspx" target="_blank" class="guideline-card">
+                    <h3>🏛️ CCSEA</h3>
+                    <p>Committee for Control and Supervision of Experiments on Animals</p>
+                </a>
+                <a href="https://www.petaindia.com/" target="_blank" class="guideline-card">
+                    <h3>🐾 PETA India</h3>
+                    <p>People for the Ethical Treatment of Animals</p>
+                </a>
+            </div>
+            <div class="footer">
+                <p>Brainware University | Rodent BMI Monitoring System v2.0 | 5g Precision</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>

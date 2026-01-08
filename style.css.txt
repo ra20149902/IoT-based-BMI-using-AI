@@ -1,0 +1,239 @@
+// https://iot-based-bmi-using-ai-default-rtdb.firebaseio.com/:null
+
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+    projectId: "YOUR_PROJECT",
+    storageBucket: "YOUR_PROJECT.appspot.com"
+};
+
+// AI Drug Dosage Database (pharmacology standards)
+const AI_DRUG_DOSES = {
+    saline: 0,
+    metformin: 10,      // mg/kg
+    insulin: 2,         // IU/kg  
+    streptozotocin: 50  // mg/kg
+};
+
+let db, charts = {}, recordsData = [], isAutoMode = false;
+let weightHistory = [];
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+db = firebase.database();
+
+// Lee Index calculation (rodent BMI standard)
+function calculateLeeIndex(weight, length) {
+    return Math.cbrt(weight / (length * length * length)) * 1000;
+}
+
+// BMI Condition classification
+function getCondition(leeIndex) {
+    if (leeIndex > 310) return { text: 'Obese', color: '#ff6b6b' };
+    if (leeIndex > 300) return { text: 'Overweight', color: '#ffa726' };
+    if (leeIndex < 290) return { text: 'Underweight', color: '#42a5f5' };
+    return { text: 'Normal', color: '#4CAF50' };
+}
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    setupEventListeners();
+    setupCharts();
+    listenToFirebase();
+    updateDisplay(0); // Initial zero state
+});
+
+// Real-time Arduino weight updates
+function listenToFirebase() {
+    const weightRef = firebase.database().ref('rodent/weight');
+    weightRef.on('value', (snapshot) => {
+        const weight = snapshot.val() || 0;
+        document.getElementById('weight-display').textContent = weight.toFixed(2) + ' g';
+        document.getElementById('arduino-status').textContent = '🟢 Connected';
+        updateDisplay(weight);
+    });
+
+    // Records sync
+    firebase.database().ref('records').on('value', (snapshot) => {
+        recordsData = [];
+        snapshot.forEach(child => recordsData.push(child.val()));
+        renderRecords();
+        updateCharts();
+    });
+
+    // Alerts sync
+    firebase.database().ref('alerts').on('value', (snapshot) => {
+        renderAlerts(snapshot.val());
+    });
+}
+
+function updateDisplay(weight) {
+    const length = parseFloat(document.getElementById('length').value) || 0;
+    const leeIndex = calculateLeeIndex(weight, length);
+    
+    document.getElementById('length-display').textContent = length.toFixed(2) + ' cm';
+    document.getElementById('lee-display').textContent = leeIndex.toFixed(2);
+    
+    const condition = getCondition(leeIndex);
+    const conditionEl = document.getElementById('condition-display');
+    conditionEl.textContent = condition.text;
+    conditionEl.style.background = condition.color;
+    
+    // AI Dose Calculation
+    const drug = document.getElementById('drug-select').value;
+    const dosePerKg = AI_DRUG_DOSES[drug] || 0;
+    const totalDose = (weight * dosePerKg / 1000).toFixed(3);
+    document.getElementById('dose-display').textContent = totalDose;
+
+    // Auto-alert abnormal BMI
+    if (leeIndex > 310 || leeIndex < 290) {
+        firebase.database().ref('alerts').push({
+            rodentId: document.getElementById('rodent-id').value,
+            condition: condition.text,
+            leeIndex: leeIndex,
+            weight: weight,
+            timestamp: Date.now(),
+            length: length
+        });
+    }
+}
+
+// Save complete record
+function saveRecord() {
+    const record = {
+        rodentId: document.getElementById('rodent-id').value,
+        gender: document.getElementById('gender').value,
+        age: document.getElementById('age').value,
+        weight: parseFloat(document.getElementById('weight-display').textContent),
+        length: parseFloat(document.getElementById('length-display').textContent),
+        leeIndex: parseFloat(document.getElementById('lee-display').textContent),
+        timestamp: Date.now(),
+        dataSourceId: 'Manual_' + Date.now()
+    };
+
+    if (document.getElementById('administer-drug').checked) {
+        record.drug = document.getElementById('drug-select').value;
+        record.dose = parseFloat(document.getElementById('dose-display').textContent);
+    }
+
+    firebase.database().ref('records').push(record);
+}
+
+function renderRecords() {
+    const tbody = document.querySelector('#records-table tbody');
+    tbody.innerHTML = '';
+    
+    recordsData.slice(-50).forEach(record => { // Last 50 records
+        const row = tbody.insertRow();
+        row.innerHTML = `
+            <td>${record.dataSourceId?.slice(0,8) || 'Auto'}</td>
+            <td>${new Date(record.timestamp).toLocaleString()}</td>
+            <td>${record.gender || '-'}</td>
+            <td>${record.age || '-'}</td>
+            <td>${record.weight?.toFixed(2) || 0}</td>
+            <td>${record.length?.toFixed(2) || 0}</td>
+            <td>${record.leeIndex?.toFixed(2) || 0}</td>
+            <td>${record.drug ? record.drug + '/' + record.dose?.toFixed(2) : '-'}</td>
+        `;
+    });
+}
+
+function setupCharts() {
+    // Lee Index Chart
+    const leeCtx = document.getElementById('lee-chart').getContext('2d');
+    charts.lee = new Chart(leeCtx, {
+        type: 'line',
+        data: { labels: [], datasets: [{
+            label: 'Lee Index',
+            data: [],
+            borderColor: '#667eea',
+            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+            tension: 0.4
+        }] },
+        options: { responsive: true, scales: { y: { beginAtZero: false } } }
+    });
+    
+    // Similar setup for weight, length, drug charts...
+}
+
+function updateCharts() {
+    if (recordsData.length === 0) return;
+    
+    const labels = recordsData.slice(-20).map(r => 
+        new Date(r.timestamp).toLocaleTimeString()
+    );
+    
+    charts.lee.data.labels = labels;
+    charts.lee.data.datasets[0].data = recordsData.slice(-20).map(r => r.leeIndex);
+    charts.lee.update('none');
+}
+
+function renderAlerts(alerts) {
+    const container = document.getElementById('alerts-container');
+    container.innerHTML = '';
+    
+    if (alerts) {
+        Object.values(alerts).slice(-10).forEach(alert => {
+            const alertCard = document.createElement('div');
+            alertCard.className = 'alert-card';
+            alertCard.innerHTML = `
+                <h4>${alert.rodentId}</h4>
+                <p>Condition: <strong>${alert.condition}</strong></p>
+                <p>Lee Index: ${alert.leeIndex?.toFixed(2)}</p>
+                <p>Weight: ${alert.weight?.toFixed(2)}g</p>
+                <small>${new Date(alert.timestamp).toLocaleString()}</small>
+            `;
+            container.appendChild(alertCard);
+        });
+    }
+}
+
+function setupEventListeners() {
+    // Input listeners
+    document.getElementById('length').addEventListener('input', function() {
+        const weight = parseFloat(document.getElementById('weight-display').textContent) || 0;
+        updateDisplay(weight);
+    });
+
+    document.getElementById('drug-select').addEventListener('change', function() {
+        const weight = parseFloat(document.getElementById('weight-display').textContent) || 0;
+        updateDisplay(weight);
+    });
+
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.querySelector('.nav-item.active').classList.remove('active');
+            this.classList.add('active');
+            
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            document.querySelector(this.getAttribute('href')).classList.add('active');
+        });
+    });
+
+    // Auto mode toggle
+    window.toggleAutoMode = function() {
+        isAutoMode = !isAutoMode;
+        const btn = event.target;
+        if (isAutoMode) {
+            btn.textContent = '⏸ Pause Auto';
+            btn.style.background = '#ff6b6b';
+            document.getElementById('blynk-status').textContent = '🟢 Connected';
+        } else {
+            btn.textContent = '▶ Start Auto';
+            btn.style.background = '#667eea';
+        }
+    };
+
+    window.saveRecord = saveRecord;
+}
+
+// Simulate Arduino data for testing (remove in production)
+setInterval(() => {
+    if (isAutoMode) {
+        const testWeight = (Math.sin(Date.now() / 10000) * 2 + 20 + Math.random() * 2).toFixed(2);
+        firebase.database().ref('rodent/weight').set(parseFloat(testWeight));
+    }
+}, 5000);
